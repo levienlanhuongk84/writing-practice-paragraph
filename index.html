@@ -1016,6 +1016,19 @@ body.ref-open { overflow: hidden; }
 .rub-note { margin-top: 14px; }
 .rub-note ul { margin: 6px 0 0; }
 
+/* automatic AI marking (19/11/2026) */
+.ai-st { display: block; margin-top: 6px; color: var(--ink-2); }
+.ai-st:empty { display: none; }
+.spin { display: inline-block; width: 11px; height: 11px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -1px; margin-right: 4px; animation: aispin .8s linear infinite; }
+@keyframes aispin { to { transform: rotate(360deg); } }
+.ai-x .rv-h h4 { color: var(--orange-ink); }
+.ai-tp { list-style: none; margin: 6px 0 8px; padding: 0; display: grid; gap: 3px; font-size: .92em; }
+.ai-tp li.ok { color: var(--good); } .ai-tp li.no { color: var(--orange-ink); }
+.ai-why { margin: 4px 0 8px; } .ai-why summary { cursor: pointer; font-weight: 700; font-size: .92em; }
+.ai-why p { margin: 6px 0; font-size: .92em; }
+@media (max-width: 640px) { .rw-row { grid-template-columns: 1fr; } .rw-row > p { grid-column: 1; } }
+.ai-x .rw-row { grid-template-columns: minmax(0, 1fr); } .ai-x .rw-row > p { grid-column: 1; }
+
   /* ===== LH Master Hero — background art taken from the approved mock (logo, glow, ribbons fixed); only eyebrow / title / 3 chips change.
      Geometry measured on the mock at 1997×277 px: 1 mock px = 0.050075cqw. ===== */
   .lh-hero { --u: .050075cqw; container-type: inline-size; position: relative; width: 100%; aspect-ratio: 1997 / 277; overflow: hidden; color: #F7EDFC;
@@ -1284,7 +1297,7 @@ body.ref-open { overflow: hidden; }
   </section>
   <section class="block" id="m-list">
     <h3>My submissions</h3>
-    <div class="tablewrap"><table class="tbl" id="mine-tbl"><thead><tr><th>Submitted</th><th>Prompt</th><th>Name</th><th class="n">Step goals</th><th class="n">Words</th><th>Machine check</th><th>Teacher</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div class="tablewrap"><table class="tbl" id="mine-tbl"><thead><tr><th>Submitted</th><th>Prompt</th><th>Name</th><th class="n">Step goals</th><th class="n">Words</th><th>Machine check</th><th>Teacher</th><th>AI marking</th></tr></thead><tbody></tbody></table></div>
     <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn ghost small" type="button" id="mine-clear">Clear this device</button></div>
   </section>
 </section>
@@ -1773,7 +1786,8 @@ function localApi(action, p) {       // no class records connected: everything s
     case 'list_full': return { ok: true, rows: rows.map(r => pub(r, true)), settings: store.get('lset', {}) };
     case 'grade': { const r = find(); if (!r) return { ok: false, error: 'attempt not found' }; const g = r.grading = r.grading || { released: false }; g.marks = { W1: p.marks.W1 }; g.overall = p.marks.W1 === null ? null : half(p.marks.W1); g.feedback = Object.assign({}, p.feedback, { criteria: p.criteria }); g.gradedBy = u.name; g.gradedAt = new Date().toISOString(); save(); return { ok: true, grading: g }; }
     case 'release': { const r = find(); if (!r || !r.grading || !r.grading.gradedAt) return { ok: false, error: 'save the marks first' }; r.grading.released = !!p.release; r.grading.releasedAt = p.release ? new Date().toISOString() : ''; save(); return { ok: true, grading: r.grading }; }
-    case 'make_doc': case 'ai_grade': return { ok: false, error: 'This needs the class records (not connected in this copy).' };
+    case 'make_doc': case 'ai_grade': case 'ai_requeue': return { ok: false, error: 'This needs the class records (not connected in this copy).' };
+    case 'ai_status': return { ok: true, items: [] };
   }
   if (u.role !== 'admin') return { ok: false, error: 'admin only' };
   if (action === 'save_settings') { store.set('lset', p.settings); return { ok: true, settings: p.settings }; }
@@ -2043,7 +2057,7 @@ function sentHtml(id) {
   const s = st(id), cid = s.submitted.clientId, m = mineList().find(x => x.clientId === cid), p = PROMPTS[id];
   return `<div class="set-done card" data-done="${esc(id)}"><div class="row" style="justify-content:space-between;align-items:flex-start"><div><span class="eyebrow">${esc(p.type + ' · ' + TYPE(p.type).short)}</span><h3 style="margin:2px 0">${esc(p.id + ' · ' + p.topic)}</h3></div><span class="chip g">Submitted</span></div>
     <div class="note good" style="margin-top:8px"><span class="tag">Sent</span><p>${fmtDate(s.submitted.submittedAt)} · paragraph ${m ? m.words : '—'} words · step goals ${m ? m.correct + '/' + m.total : '—'}. <span data-sendst="${esc(cid)}"></span></p></div>
-    <div class="row" style="margin:10px 0"><button class="btn primary" data-machine="${esc(cid)}">Open the machine check</button><button class="btn" data-goto="s-mine">My results</button></div>
+    <div class="row" style="margin:10px 0"><button class="btn primary" data-machine="${esc(cid)}">Open your marking</button><span class="muted small" data-aist="${esc(cid)}">${aiStateTxt(cid)}</span><button class="btn" data-goto="s-mine">My results</button></div>
     <div class="airw" data-airw="${esc(cid)}"><div class="airw-h"><b>✦ Natural rewrite</b><span class="muted small">Your own ideas, written the way a native academic writer would put them.</span></div><div class="airw-body"><button class="btn accent" data-airw-go="${esc(cid)}">Show the natural rewrite</button></div></div>
     <div class="model-lad" style="margin-top:12px"><h4 class="lad-title">Compare with the model, step by step</h4>${modelHtml(p, s)}</div></div>`;
 }
@@ -2126,12 +2140,18 @@ function rewriteFallback(m, why) {
 async function aiRewrite(cid) {
   const m = mineList().find(x => x.clientId === cid), box = $(`[data-airw="${cid}"] .airw-body`); if (!m || !box) return;
   if (RW[cid]) { box.innerHTML = rewriteHtml(m, RW[cid]); return; }
+  if (CONFIG.API_URL && !m.pending) {
+    box.innerHTML = '<p class="muted small">Getting the AI version of your paragraph…</p>';
+    if (!(aiOf(cid) || {}).ai) await fetchAi([m]);
+    const a = aiOf(cid);
+    if (a && a.ai && (a.ai.rewrite || (a.ai.alternatives || []).length)) {
+      RW[cid] = [].concat(a.ai.rewrite ? [{ text: unBox(a.ai.rewrite), why: 'Corrected: your ideas, with the errors fixed.' }] : [], (a.ai.alternatives || []).map(x => ({ text: unBox(x.text), why: x.method_vi || '' }))).slice(0, 4);
+      store.set('rw', RW); box.innerHTML = rewriteHtml(m, RW[cid]) + '<p class="muted small" style="margin-top:6px">AI suggestion – compare it with your paragraph and keep what helps.</p>'; return;
+    }
+    if (a && a.pending) { pollAi(cid); box.innerHTML = `<p class="muted small">The AI is still marking your paragraph${a.queue > 1 ? ' (' + a.queue + ' waiting)' : ''}. Try again in a minute.</p><button class="btn accent" data-airw-go="${esc(cid)}">Try again</button>`; return; }
+  }
   if (m.pending && CONFIG.API_URL) { box.innerHTML = `<p class="muted small">Your paragraph is still being saved to the class records – try again in a moment.</p><button class="btn accent" data-airw-go="${esc(cid)}">Try again</button>`; return; }
-  box.innerHTML = '<p class="muted small">Writing a natural version of your paragraph… (up to about 30 seconds)</p>';
-  let j = null; try { j = await api('ai_rewrite', { clientId: m.clientId, token: m.token, submittedAt: m.submittedAt }); } catch (e) { j = { ok: false, error: 'network' }; }
-  if (j && j.ok && Array.isArray(j.rewrites) && j.rewrites.length) { RW[cid] = j.rewrites.slice(0, 6); store.set('rw', RW); box.innerHTML = rewriteHtml(m, RW[cid]) + '<p class="muted small" style="margin-top:6px">AI suggestion – compare it with your paragraph and keep what helps.</p>'; return; }
-  const err = String((j && j.error) || ''), off = !err || /unknown action|not connected|wrong name|test required|network/i.test(err);
-  box.innerHTML = rewriteFallback(m, off ? '' : 'The automatic rewrite is not available right now (' + err + ').');
+  box.innerHTML = rewriteFallback(m, '');
 }
 let flushing = false, flushTimer = null, flushRound = 0;
 function scheduleFlush(ms) { clearTimeout(flushTimer); flushTimer = setTimeout(flushQueue, ms); }
@@ -2142,7 +2162,7 @@ async function flushQueue() {
     for (const m of mineList().filter(x => x.pending)) {
       setSendNote(m.clientId, null);
       let ok = false; try { const j = await api('submit', m.pending); ok = !!(j && j.ok); } catch (e) {}   // under load Google may lose the reply after the row is written: the resend is then answered "duplicate" = ok
-      if (ok) { const L = mineList(); const x = L.find(y => y.clientId === m.clientId); if (x) { delete x.pending; store.set('mine', L); } } else left++;
+      if (ok) { const L = mineList(); const x = L.find(y => y.clientId === m.clientId); if (x) { delete x.pending; store.set('mine', L); } pollAi(m.clientId); } else left++;
       setSendNote(m.clientId, ok);
     }
   } finally { flushing = false; }
@@ -2396,7 +2416,8 @@ function renderReview() {
   const L = orderIssues(st), nAll = L.length, nP = L.filter(x => x.a.p).length;
   const banner = R.mode === 'student'
     ? `<div class="ai-banner rel"><span class="ic">✓</span><div><b>Your teacher's review${R.releasedAt ? ' · released ' + fmtDate(R.releasedAt) : ''}</b><small>These are your official marks and comments. Click a number in your text to see the comment.</small></div></div>`
-    : `<div class="ai-banner"><span class="ic">!</span><div><b>Machine check – not the official result</b><small>${edit ? 'This analysis was made automatically. Review and correct it before you release it to the student.' : 'Your teacher will review this, correct it and release the official marks.'}</small></div></div>`;
+    : R.ai ? `<div class="ai-banner"><span class="ic">✦</span><div><b>AI marking – ${edit ? 'check it before you release it' : 'provisional'}</b><small>${edit ? 'Marked automatically on the paragraph rubric (same engine as Academic Writing). Adjust the bands, comments and issues, then save or release.' : 'Marked by AI on the paragraph rubric. Your teacher will check it and release the official marks in My results.'}</small></div></div>`
+    : `<div class="ai-banner"><span class="ic">!</span><div><b>Machine check – not the official result</b><small>${edit ? 'This analysis was made automatically. Review and correct it before you release it to the student.' : 'Your teacher will review this, correct it and release the official marks.'}</small><small id="rv-aist" class="ai-st"></small></div></div>`;
   const sc = c => `<div class="sc ${c}"><span class="lb"><i></i>${CAT[c]}</span><div class="v">${edit ? `<b>${bandTxt(st.bands[c])}</b><span class="st"><button type="button" data-band="${c}" data-d="1" aria-label="up">▲</button><button type="button" data-band="${c}" data-d="-1" aria-label="down">▼</button></span>` : `<b>${bandTxt(st.bands[c])}</b>`}</div><small>/ 5</small></div>`;
   const list = (k, lab, cls, icon) => `<div class="sbox ${cls}"><h5>${icon} ${lab}${edit ? ' <span class="muted small" style="margin-left:auto">one per line</span>' : ''}</h5>${edit ? `<textarea data-f="${k}" rows="5" style="min-height:110px">${esc(st[k].join('\n'))}</textarea>` : (st[k].length ? `<ul>${st[k].map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p class="muted small">—</p>')}</div>`;
   const left = `<div class="rv-card rv-left">
@@ -2411,7 +2432,7 @@ function renderReview() {
       ${edit ? `<div class="iss-edit" id="iss-edit" hidden></div><div class="row" style="margin-top:8px"><button class="btn ghost small" id="add-general">+ Add a general issue</button></div>` : ''}
     </div>`;
   const right = `<div class="rv-card rv-right">${banner}
-      <div class="rv-h"><h4>Marks</h4>${edit ? '<button class="btn ghost small" id="rv-ai">✦ Suggest with AI</button>' : ''}</div>
+      <div class="rv-h"><h4>Marks</h4>${edit ? `<span class="row" style="gap:6px"><button class="btn ghost small" id="rv-ai">${R.ai ? '✦ Use AI marking' : '✦ Mark with AI'}</button>${R.ai ? '<button class="btn ghost small" id="rv-ai-again" title="Send this paragraph to the AI again">↻</button>' : ''}</span>` : ''}</div>
       <div class="scores">${CATS.map(sc).join('')}</div>
       <div class="total"><span>Mark</span><b id="rv-mark">${f1(mark)}</b><span>/ 10 · ${total25(st.bands)}/25 × 0.4 · ${lvl(mark)}</span></div>
       <div class="rv-sec"><div class="rv-h"><h4>Overall comment</h4></div>${edit ? `<textarea data-f="comment" maxlength="500">${esc(st.comment)}</textarea><div class="cnt" id="cnt-comment">${st.comment.length}/500</div>` : `<p>${esc(st.comment || '—')}</p>`}</div>
@@ -2420,12 +2441,13 @@ function renderReview() {
       ${edit ? `<div class="rv-sec"><div class="rv-h"><h4>Before you release</h4></div><div class="gate2" id="rv-gate">${GATE.map((g, i) => `<label><input type="checkbox" data-gate="${i}"${st.gate && st.gate[i] ? ' checked' : ''}> ${esc(g)}</label>`).join('')}</div></div>
       <div class="rv-actions"><button class="btn" id="rv-save">Save draft</button><button class="btn primary lg" id="rv-release"></button></div>
       <div class="status" id="rv-status" hidden><span class="dot"></span><span></span></div>` : ''}
+      ${R.mode !== 'student' ? aiExtrasHtml(R.ai, edit) : ''}
       ${R.mode !== 'teacher' ? `<div class="model-lad lad-wide"><h4 class="lad-title">The model, step by step</h4>${modelHtml(p, null)}</div>` : ''}
       ${R.mode === 'machine' ? `<div class="status" id="rv-send" data-cid="${esc(R.key)}" hidden><span class="dot"></span><span></span></div>` : ''}
     </div>`;
   $('#rv-body').innerHTML = `<div class="rv-tabs"><button type="button" data-rvtab="essay" class="${R.tab !== 'marks' ? 'on' : ''}">Paragraph</button><button type="button" data-rvtab="marks" class="${R.tab === 'marks' ? 'on' : ''}">Marks &amp; comments</button></div><div class="rv" data-tab="${R.tab || 'essay'}">${left}${right}</div>`;
   if (edit) { releaseBtn(); if (R.sel) openEditor(R.sel); }
-  if (R.mode === 'machine') { const m = mineSubs().find(x => x.cids.includes(R.key)); if (m) setSendNote(R.key, !m.pending); }
+  if (R.mode === 'machine') { const m = mineSubs().find(x => x.cids.includes(R.key)); if (m) setSendNote(R.key, !m.pending); if (!R.ai) paintAiState(); }
 }
 function paintEssay() { $('#rv-essay').innerHTML = essayHtml(RV.text, RV.st, RV.onlyP, RV.sel); $('#rv-issues').innerHTML = issuesHtml(RV.st, RV.onlyP, RV.sel); const L = orderIssues(RV.st); $('.seg-t [data-only="0"]').textContent = 'All issues (' + L.length + ')'; $('.seg-t [data-only="1"]').textContent = 'Main only (' + L.filter(x => x.a.p).length + ')'; }
 function paintMark() { const m = markOf(RV.st.bands); $('#rv-mark').textContent = f1(m); $('#rv-mark').nextElementSibling.textContent = '/ 10 · ' + total25(RV.st.bands) + '/25 × 0.4 · ' + lvl(m); }
@@ -2436,10 +2458,90 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#rv-mo
 
 function openMachine(m) {
   const p = combo(m.pid); if (!p) return;
-  const mr = machineReview(m.text, p);
-  RV = { mode: 'machine', text: m.text, p, st: mr, who: { name: m.name, sid: m.sid, submittedAt: m.submittedAt }, key: m.clientId, onlyP: false, sel: '' };
-  openModal('Machine check · ' + p.id + ' · ' + p.topic, 'An automatic first check of your topic sentence, outline, concluding sentence and paragraph. Your teacher will review it and release the official marks.', `Step goals: <b>${mr.goals.filter(g => g.ok).length}/${mr.goals.length}</b><div class="gls">${goalChips(mr.goals)}</div>`);
+  const mr = machineReview(m.text, p), a = aiOf(m.clientId), ai = a && a.ai;
+  const st = ai ? Object.assign(aiToSt(ai, m.text, mr), { goals: mr.goals }) : mr;
+  RV = { mode: 'machine', text: m.text, p, st, ai, who: { name: m.name, sid: m.sid, submittedAt: m.submittedAt }, key: m.clientId, onlyP: false, sel: '' };
+  if (!ai && CONFIG.API_URL && !(a && a.failed)) pollAi(m.clientId);
+  openModal((ai ? 'AI marking · ' : 'Machine check · ') + p.id + ' · ' + p.topic, ai ? 'Marked by AI on the paragraph rubric (5 criteria × 0–5). It is provisional: your teacher checks it and releases the official marks.' : 'An automatic first check of your topic sentence, outline, concluding sentence and paragraph. The AI marking appears here as soon as it is ready.', `Step goals: <b>${mr.goals.filter(g => g.ok).length}/${mr.goals.length}</b><div class="gls">${goalChips(mr.goals)}</div>`);
   renderReview();
+}
+
+
+/* ====================== AUTOMATIC AI MARKING (19/11/2026) ======================
+   The class records mark every paragraph by themselves (Supabase workers, same engine and rubric as Academic Writing:
+   error scan → paragraph rubric 5 × 0–5, gates and rounding by the system). Students see the result as provisional;
+   the teacher checks it, adjusts it and releases the official marks. */
+const AIM = store.get('aim', {});              // clientId -> { ai } / { pending, queue } / { failed } (kept on this device)
+const CODE_CAT = { T: 'TF', COPY: 'TF', TS: 'STR', UN: 'STR', DEV: 'STR', CONC: 'STR', '¶': 'STR', COH: 'ORG', REF: 'ORG', WDY: 'ORG', '?': 'ORG',
+  REG: 'VOC', WW: 'VOC', WF: 'VOC', SP: 'VOC', REP: 'VOC' };        // every other code (sentence structure, grammar, punctuation) → GRA
+const AI_CRIT = { TF: 'TF', STR: 'PS', ORG: 'OC', VOC: 'LR', GRA: 'GR' };
+const unBox = t => String(t || '').replace(/^\s*\[\d+\]\s*(\([^)]*\)\s*)?/gm, '').trim();
+function aiToSt(ai, text, base) {
+  const sc = (ai.items && ai.items[0] && ai.items[0].scores) || {}, bands = {};
+  CATS.forEach(c => { bands[c] = clamp(Math.round(+sc[AI_CRIT[c]] || 0), 0, 5); });
+  const st = { bands, comment: String(ai.comment_vi || '').slice(0, 500), strengths: (ai.strengths_vi || []).map(String), improve: (ai.fixes_vi || []).map(String),
+    lesson: (base && base.lesson) || 't-pg', ann: [], other: [], gate: [] };
+  const P = parseText(text).pg, off = P ? P.s : 0, area = P ? text.slice(P.s, P.e) : text;
+  (ai.errors || []).forEach(x => {
+    const c = CODE_CAT[x.code] || 'GRA', m = ((x.code ? x.code + ' · ' : '') + (x.label ? x.label + ': ' : '') + (x.explain_vi || '')).slice(0, 180), f = String(x.correction || '').slice(0, 80);
+    const h = findQuote(area, String(x.quote || ''), st.ann.map(a => ({ s: a.s - off, e: a.e - off })));
+    if (h) st.ann.push({ s: h[0] + off, e: h[1] + off, c, m, f, p: x.global || c !== 'GRA' || !/^(P|CAP|SP|ART|PL)$/.test(x.code) ? 1 : 0, q: text.slice(h[0] + off, h[1] + off).slice(0, 60), ai: 1 });
+    else st.other.push({ c, m: ('“' + String(x.quote || '').slice(0, 50) + '” – ' + m).slice(0, 180), f, p: 1, ai: 1 });
+  });
+  (ai.gates || []).forEach(g => st.other.unshift({ c: 'TF', m: String(g.note || g.short || '').slice(0, 180), f: '', p: 1, ai: 1 }));
+  st.ann.sort((a, b) => a.s - b.s);
+  return st;
+}
+const aiOf = cid => AIM[cid] || null;
+function aiExtrasHtml(ai, staff) {
+  if (!ai) return '';
+  const tp = (ai.task_points || []).length ? `<ul class="ai-tp">${ai.task_points.map(t => `<li class="${t.met ? 'ok' : 'no'}">${t.met ? '✓' : '✗'} ${esc(t.point)}</li>`).join('')}</ul>` : '';
+  const why = (ai.crit_notes || []).length ? `<details class="ai-why"><summary>Why these bands</summary>${ai.crit_notes.map(n => { const c = CATS.find(k => AI_CRIT[k] === n.c) || n.c; return `<p><b>${esc(CAT[c] || c)}</b> ${esc(n.reason_vi || '')}${(n.evidence || []).length ? `<br><span class="muted small">${n.evidence.map(esc).join(' · ')}</span>` : ''}</p>`; }).join('')}</details>` : '';
+  const alt = (ai.alternatives || []).map(a => `<div class="rw-row"><p class="en rw-nat"><span class="lb">Another way</span>${esc(unBox(a.text))}</p>${a.method_vi ? `<p class="rw-why">${esc(a.method_vi)}</p>` : ''}</div>`).join('');
+  const flags = staff && (ai.flags || []).length ? `<div class="note warn"><span class="tag">For the teacher</span><p>${ai.flags.map(esc).join('<br>')}</p></div>` : '';
+  return `<div class="rv-sec ai-x"><div class="rv-h"><h4>✦ AI marking · ${f1(+ai.score10 || 0)}/10${ai.grade ? ' · ' + esc(ai.grade) : ''}</h4></div>${flags}${tp}${why}
+    ${ai.rewrite ? `<div class="rw-row"><p class="en rw-nat"><span class="lb">Corrected</span>${esc(unBox(ai.rewrite))}</p></div>` : ''}${alt}</div>`;
+}
+/* students: ask the class records for the AI marking of their own paragraphs (clientId + the token kept on this device) */
+async function fetchAi(list) {
+  if (!CONFIG.API_URL || !list.length) return [];
+  let j = null; try { j = await api('ai_status', { keys: list.slice(0, 10).map(m => m.clientId + '.' + m.token).join(',') }); } catch (e) { return []; }
+  const items = j && j.ok ? (j.items || []) : [];
+  items.forEach(x => { if (x.off) return; AIM[x.clientId] = x.ai ? { ai: x.ai } : { pending: !!x.pending, queue: x.queue || 0, failed: !!x.failed }; });
+  if (items.length) store.set('aim', AIM);
+  return items;
+}
+const POLL = {};
+async function pollAi(cid) {
+  if (POLL[cid] || !CONFIG.API_URL) return; POLL[cid] = 1;
+  try {
+    for (let i = 0; i < 60; i++) {               // up to about 6 minutes while the page is open
+      const m = mineList().find(x => x.clientId === cid); if (!m) break;
+      if (!m.pending) { await fetchAi([m]); const a = aiOf(cid); aiPaint(cid); if (a && (a.ai || a.failed || a.pending === false)) break; }
+      await new Promise(r => setTimeout(r, i < 6 ? 5000 : 8000));
+    }
+  } finally { delete POLL[cid]; }
+}
+function aiPaint(cid) {
+  if (RV && RV.mode === 'machine' && RV.key === cid) { const a = aiOf(cid); if (a && a.ai && !RV.ai) { const m = mineList().find(x => x.clientId === cid); if (m) { const tab = RV.tab; openMachine(m); RV.tab = tab; renderReview(); return; } } paintAiState(); }
+  const el = $(`[data-aist="${cid}"]`); if (el) el.innerHTML = aiStateTxt(cid);
+  if (!$('#s-mine').hidden) renderMine();
+}
+function aiStateTxt(cid) {
+  const a = aiOf(cid);
+  if (!a) return '';
+  if (a.ai) return `<b>${f1(+a.ai.score10 || 0)}</b>/10 <button class="btn small" data-machine="${esc(cid)}">Open</button>`;
+  if (a.failed) return '<span class="muted small">AI could not mark it – your teacher will</span>';
+  if (a.pending) return `<span class="muted small">marking…${a.queue > 1 ? ' (' + a.queue + ' waiting)' : ''}</span>`;
+  return '';
+}
+function paintAiState() {
+  const el = $('#rv-aist'); if (!el || !RV) return; const a = aiOf(RV.key);
+  el.innerHTML = !CONFIG.API_URL ? '' : a && a.failed ? 'The AI could not mark this paragraph. Your teacher will mark it.' : a && a.pending === false && !a.ai ? '' : `<span class="spin"></span> The AI is marking your paragraph${a && a.queue > 1 ? ' (' + a.queue + ' waiting)' : ''}… This usually takes under a minute; this screen updates by itself.`;
+}
+function refreshAiMine() {                         // on opening the page: recent paragraphs still without an AI result
+  const L = mineList().filter(m => !m.pending && !(aiOf(m.clientId) || {}).ai && !(aiOf(m.clientId) || {}).failed && Date.now() - new Date(m.submittedAt) < 14 * 864e5);
+  if (!L.length) return; fetchAi(L.slice(-10)).then(() => { L.forEach(m => { const a = aiOf(m.clientId); if (a && a.pending) pollAi(m.clientId); else aiPaint(m.clientId); }); });
 }
 
 /* ---------- teacher interactions ---------- */
@@ -2465,9 +2567,10 @@ function openTeacher(r) {
   let st, src;
   if (draft && (!g.gradedAt || draft.at > g.gradedAt)) { st = draft.st; src = 'Draft on this device · ' + fmtDate(draft.at); }
   else if (server) { st = server; src = 'Saved by ' + (g.gradedBy || '') + ' · ' + fmtDate(g.gradedAt); }
-  else { const mr = machineReview(text, p); st = { bands: mr.bands, comment: mr.comment, strengths: mr.strengths, improve: mr.improve, lesson: mr.lesson, ann: mr.ann, other: mr.other, gate: [] }; src = 'Machine check (not saved yet)'; }
+  else if (aiRow(r)) { st = aiToSt(aiRow(r), text, machineReview(text, p)); src = 'AI marking (not saved yet) · ' + fmtDate(aiRow(r).at); }
+  else { const mr = machineReview(text, p); st = { bands: mr.bands, comment: mr.comment, strengths: mr.strengths, improve: mr.improve, lesson: mr.lesson, ann: mr.ann, other: mr.other, gate: [] }; src = 'Machine check (not saved yet)' + aiWait(r); }
   st.gate = st.gate || [];
-  RV = { mode: 'teacher', text, p, st, who: { name: r.name, sid: r.sid, submittedAt: r.submittedAt }, row: r, onlyP: false, sel: '', dirty: false };
+  RV = { mode: 'teacher', text, p, st, ai: aiRow(r), who: { name: r.name, sid: r.sid, submittedAt: r.submittedAt }, row: r, onlyP: false, sel: '', dirty: false };
   openModal('Review & mark', 'Check the machine analysis, adjust the marks and comments, then release them to the student.', `<div id="rv-src">${esc(src)}</div><div class="saved-at" id="rv-saved"></div><div>Step goals: <b>${r.correct}/${r.total}</b> · total ${mmss(r.timeSec)}</div><div class="gls">${goalChips((r.answers || []).filter(a => a && a.k))}</div><div class="small">Step times: ${esc(stepTimes(r))}</div>${r.rows ? `<div>Sent as ${r.rows.length} rows (one per set, before 28/10): marks, comments and release apply to all of them.</div>` : ''}${r.gmixed ? '<div class="warn-t">⚠ These rows were marked differently: this shows the least advanced one. Saving writes the same marks to every row.</div>' : ''}<div id="rv-doclink"></div>`);
   renderReview(); docLink(g.docUrl);
 }
@@ -2493,6 +2596,7 @@ $('#rv-body').addEventListener('click', async e => {
   if (e.target.closest('#rv-save')) { await teacherSave(false); return; }
   if (e.target.closest('#rv-release')) { await teacherRelease(); return; }
   if (e.target.closest('#rv-ai')) { await teacherAi(); return; }
+  if (e.target.closest('#rv-ai-again')) { if (await ask('Send this paragraph to the AI to be marked again? The current AI marking is replaced when the new one is ready.', 'Mark again')) await teacherAiAgain(); return; }
   if (e.target.closest('#rv-doc')) { await teacherDoc(); return; }
   const ed = e.target.closest('[data-ed]'); if (ed) {
     const [kind, i] = [RV.sel[0], +RV.sel.slice(1)], arr = kind === 'a' ? RV.st.ann : RV.st.other;
@@ -2632,24 +2736,27 @@ async function aiAsk(r, p, text, retry) {
   return { band, note, criteria: crit, lists: got.map(g => ({ issues: g.a.issues, range: r.parts ? [g.x.s, g.x.e] : null })) };
 }
 function addAiLists(lists, text, st) { const t = { placed: 0, general: 0, dup: 0 }; lists.forEach(L => { if (!Array.isArray(L.issues)) return; const x = addAiIssues(L.issues, text, st, L.range); t.placed += x.placed; t.general += x.general; t.dup += x.dup; }); return lists.some(L => Array.isArray(L.issues)) ? t : null; }
+const aiRow = r => (r && r.aiMark && r.aiMark.ai) || null;
+const aiWait = r => { const x = r && r.aiMark; return !x ? '' : x.failed ? ' · AI failed: ' + (x.error || 'error') : x.pending ? ' · AI marking in progress' + (x.queue > 1 ? ' (' + x.queue + ' waiting)' : '') : ''; };
 async function teacherAi() {
-  const r = RV.row, p = RV.p, btn = $('#rv-ai'); btn.disabled = true; rvStatus('Asking the AI for marks and a list of errors… (up to about 30 seconds' + (r.parts ? ' per set' : '') + ')');
-  try {
-    const a = await aiAsk(r, p, RV.text, false);
-    aiBands(RV.st.bands, a.criteria);
-    const note = '[AI suggestion · band ' + a.band + '/10] ' + a.note;
-    if (!RV.st.comment.trim() || await ask('Replace the overall comment with the AI note?', 'Replace')) RV.st.comment = note.slice(0, 500);
-    const had = RV.st.ann.some(x => x.ai) || RV.st.other.some(x => x.ai);
-    if (had && a.lists.some(L => Array.isArray(L.issues)) && await ask('Remove the AI errors added last time before adding the new list?', 'Replace them')) { RV.st.ann = RV.st.ann.filter(x => !x.ai); RV.st.other = RV.st.other.filter(x => !x.ai); }
-    const res = addAiLists(a.lists, RV.text, RV.st);
-    renderReview(); touched();
-    rvStatus(res ? `AI filled in the 5 marks and the comment, and marked ${res.placed} error${res.placed === 1 ? '' : 's'} in the text` + (res.general ? `, ${res.general} more listed below the text (words not found exactly)` : '') + (res.dup ? `; ${res.dup} already marked by the machine check` : '') + ' – check them, then Save draft or Approve & release.' : 'AI suggestion filled in – check it, then Save draft or Approve & release.', 'ok');
-  } catch (e) { rvStatus('AI suggestion not available: ' + (e.message || 'error'), 'err'); }
-  finally { const b = $('#rv-ai'); if (b) b.disabled = false; }
+  const r = RV.row;
+  if (RV.ai) {
+    if (!(await ask('Replace the marks, comments and issues on screen with the AI marking?', 'Use AI marking'))) return;
+    const gate = RV.st.gate; RV.st = Object.assign(aiToSt(RV.ai, RV.text, machineReview(RV.text, RV.p)), { gate }); RV.sel = '';
+    renderReview(); touched(); rvStatus('AI marking filled in – check it, then Save draft or Approve & release.', 'ok'); return;
+  }
+  await teacherAiAgain();
+}
+async function teacherAiAgain() {
+  const r = RV.row; rvStatus('Sending the paragraph to the AI…');
+  try { const j = await api('ai_requeue', { clientId: r.clientId, submittedAt: r.submittedAt }); if (!j.ok) throw new Error(j.error || 'error');
+    r.aiMark = Object.assign({}, r.aiMark || {}, { pending: true, failed: false });
+    rvStatus('Sent to the AI. It is usually marked within a minute: press Refresh in the list, then open this paragraph again.', 'ok'); }
+  catch (e) { rvStatus('Could not send it to the AI: ' + (e.message || 'error'), 'err'); }
 }
 /* ---------- AI draft for many sets at once (Admin tab): machine check + AI marks/comment/errors, saved as a DRAFT, never released ---------- */
 let BATCH = null;
-function batchTargets() { return filteredSubs().filter(r => gstate(r) === 'new' && !r.gmixed && !store.get(draftKey(r), null)); }   // a sitting with some rows already marked is left to the teacher
+function batchTargets() { return filteredSubs().filter(r => gstate(r) === 'new' && !r.gmixed && aiRow(r) && !store.get(draftKey(r), null)); }   // a sitting with some rows already marked is left to the teacher
 function batchBtn() {
   const b = $('#btn-ai-all'); if (!b) return;
   if (BATCH) { b.textContent = '■ Stop AI drafting'; b.disabled = false; return; }
@@ -2659,19 +2766,16 @@ function batchBtn() {
 async function aiDraftOne(r) {
   const p = combo(r.pid); if (!p) throw new Error('unknown prompt');
   const text = (r.writing && r.writing.W1) || '', mr = machineReview(text, p);
-  const st = { bands: mr.bands, comment: mr.comment, strengths: mr.strengths, improve: mr.improve, lesson: mr.lesson, ann: mr.ann, other: mr.other, gate: [] };
-  const a = await aiAsk(r, p, text, true); if (a === 'stopped') return 'stopped';
-  aiBands(st.bands, a.criteria);
-  st.comment = ('[AI draft · band ' + a.band + '/10] ' + (a.note || '')).slice(0, 500);
-  const res = addAiLists(a.lists, text, st) || { placed: 0, general: 0 };
+  if (!aiRow(r)) throw new Error('AI marking not ready yet');
+  const st = aiToSt(aiRow(r), text, mr);
   await eachRow(r, row => api('grade', gradePayload(row, st)));
-  return res.placed + res.general;
+  return st.ann.length + st.other.length;
 }
 async function aiDraftAll() {
   if (BATCH) { BATCH.stop = true; BATCH = null; batchBtn(); return; }
   const L = batchTargets(); if (!L.length) return;
-  const mins = Math.ceil(L.length * 12 / 60);
-  if (!(await ask(`Let the AI draft marks, a comment and an error list for ${L.length} not-marked submission${L.length === 1 ? '' : 's'} in the current filter? Each one is saved as a DRAFT – nothing is released to students. Takes about ${mins} minute${mins === 1 ? '' : 's'}; keep this tab open. Submissions you have already started on this device are skipped.`, 'Start'))) return;
+  const mins = Math.max(1, Math.ceil(L.length * 2 / 60));
+  if (!(await ask(`Save the AI marking of ${L.length} not-marked submission${L.length === 1 ? '' : 's'} in the current filter as drafts? Each one is saved as a DRAFT – nothing is released to students. Takes about ${mins} minute${mins === 1 ? '' : 's'}; keep this tab open. Submissions you have already started on this device are skipped.`, 'Start'))) return;
   BATCH = { stop: false }; const me = BATCH; batchBtn();
   let ok = 0, fail = 0, iss = 0; const errs = [];
   for (let i = 0; i < L.length; i++) {
@@ -2679,7 +2783,7 @@ async function aiDraftAll() {
     me.msg = `AI drafting ${i + 1} of ${L.length}: ${L[i].name}… (${ok} done${fail ? ', ' + fail + ' failed' : ''}) – keep this tab open`; $('#subs-status').textContent = me.msg;
     try { const n = await aiDraftOne(L[i]); if (n === 'stopped') break; ok++; iss += n; renderSubs(); }
     catch (e) { fail++; errs.push(L[i].name + ': ' + (e.message || 'error')); }
-    if (i < L.length - 1 && !me.stop) await new Promise(res => setTimeout(res, 1500));
+    if (i < L.length - 1 && !me.stop) await new Promise(res => setTimeout(res, 300));
   }
   const stopped = me.stop; BATCH = null; renderSubs(); batchBtn();
   $('#subs-status').textContent = `AI drafts ${stopped ? 'stopped' : 'finished'}: ${ok} saved as draft (${iss} errors marked)` + (fail ? `, ${fail} failed – run again later for those` : '') + '. Open each one, check it, then Approve & release.';
@@ -2731,7 +2835,7 @@ $('#btn-fb-hide').addEventListener('click', () => { Object.keys(FB).forEach(k =>
 function renderMine() {
   const L = mineSubs().sort((a, b) => String(b.submittedAt).localeCompare(String(a.submittedAt))), tb = $('#mine-tbl tbody');
   tb.innerHTML = L.length ? L.map(m => { const f = subFb(m), p = combo(m.pid);
-    return `<tr><td>${fmtDate(m.submittedAt)}${m.pending ? ' <span class="att">not sent</span>' : ''}</td><td class="wrap set-cell">${esc(p ? pLabel(p) : m.pid)}${p ? `<br><span class="muted small">${esc(TYPE(p.type).short)}</span>` : ''}</td><td>${esc(m.name)}<br><span class="muted small">${esc(m.sid)}</span></td><td class="n">${m.correct}/${m.total}</td><td class="n">${m.words}</td><td><button class="btn small" data-machine="${esc(m.clientId)}">Open</button></td><td>${f ? `<b>${f1(fbMark(f))}</b>/10 <button class="btn primary small" data-fbopen="${esc(m.clientId)}">Open review</button>` : `<span class="muted small">${FB_WHO && norm(m.name) === FB_WHO ? 'not released yet' : 'type your name above'}</span>`}</td><td></td></tr>`; }).join('') : '<tr><td colspan="8" class="empty">Nothing submitted on this device yet.</td></tr>';
+    return `<tr><td>${fmtDate(m.submittedAt)}${m.pending ? ' <span class="att">not sent</span>' : ''}</td><td class="wrap set-cell">${esc(p ? pLabel(p) : m.pid)}${p ? `<br><span class="muted small">${esc(TYPE(p.type).short)}</span>` : ''}</td><td>${esc(m.name)}<br><span class="muted small">${esc(m.sid)}</span></td><td class="n">${m.correct}/${m.total}</td><td class="n">${m.words}</td><td><button class="btn small" data-machine="${esc(m.clientId)}">Open</button></td><td>${f ? `<b>${f1(fbMark(f))}</b>/10 <button class="btn primary small" data-fbopen="${esc(m.clientId)}">Open review</button>` : `<span class="muted small">${FB_WHO && norm(m.name) === FB_WHO ? 'not released yet' : 'type your name above'}</span>`}</td><td data-aist="${esc(m.clientId)}">${aiStateTxt(m.clientId)}</td></tr>`; }).join('') : '<tr><td colspan="8" class="empty">Nothing submitted on this device yet.</td></tr>';
 }
 $('#mine-tbl').addEventListener('click', e => {
   const b = e.target.closest('[data-fbopen]'); if (!b) return; const m = mineSubs().find(x => x.cids.includes(b.dataset.fbopen)), f = m && subFb(m); if (!m || !f) return;
@@ -2904,7 +3008,7 @@ function renderSubs() {
   batchBtn(); if (!$('#subs-tbl')) return; const L = filteredSubs(), adm = isAdmin();
   $('#subs-status').textContent = BATCH && BATCH.msg ? BATCH.msg : L.length + ' of ' + RAW.length + ' submission' + (RAW.length === 1 ? '' : 's');
   $('#subs-tbl tbody').innerHTML = L.length ? L.map(r => { const i = RAW.indexOf(r), g = r.grading || {}, s = gstate(r);
-    return `<tr><td>${fmtDate(r.submittedAt)}${r.auto ? ' <span class="att">time up</span>' : ''}${r.mode === 'exam' ? ' <span class="att">assigned</span>' : ''}</td><td>${esc(r.name)}</td><td>${esc(r.sid)}</td><td class="wrap set-cell">${pidsOf(r.pid).map(id => `<span class="set-i"><b>${id}</b> ${esc(PROMPTS[id].topic)}</span><span class="muted small">${esc(TYPE(PROMPTS[id].type).short)}</span>`).join('')}</td><td class="n">${r.correct}/${r.total}</td><td class="n">${r.words}</td><td class="n">${mmss(r.timeSec)}</td><td>${s === 'new' ? '<span class="chip mu">not marked</span>' : `<b>${f1(fbMark(g))}</b> <span class="chip ${s === 'sent' ? 'g' : 'o'}">${s === 'sent' ? 'released' : 'draft'}</span>`}${r.gmixed ? ' <span class="chip o" title="The rows of this sitting were marked differently – open Review and save once">mixed</span>' : ''}</td><td><button class="btn primary small" data-review="${i}">Review</button></td><td>${adm ? `<button class="btn danger small" data-del="${i}">Delete</button>` : ''}</td></tr>`; }).join('') : '<tr><td colspan="10" class="empty">No submissions match.</td></tr>';
+    return `<tr><td>${fmtDate(r.submittedAt)}${r.auto ? ' <span class="att">time up</span>' : ''}${r.mode === 'exam' ? ' <span class="att">assigned</span>' : ''}</td><td>${esc(r.name)}</td><td>${esc(r.sid)}</td><td class="wrap set-cell">${pidsOf(r.pid).map(id => `<span class="set-i"><b>${id}</b> ${esc(PROMPTS[id].topic)}</span><span class="muted small">${esc(TYPE(PROMPTS[id].type).short)}</span>`).join('')}</td><td class="n">${r.correct}/${r.total}</td><td class="n">${r.words}</td><td class="n">${mmss(r.timeSec)}</td><td>${s === 'new' ? (aiRow(r) ? `<span class="chip p" title="AI marking, not saved yet">AI ${f1(+aiRow(r).score10 || 0)}</span>` : `<span class="chip mu">${r.aiMark && r.aiMark.pending ? 'AI marking…' : r.aiMark && r.aiMark.failed ? 'AI failed' : 'not marked'}</span>`) : `<b>${f1(fbMark(g))}</b> <span class="chip ${s === 'sent' ? 'g' : 'o'}">${s === 'sent' ? 'released' : 'draft'}</span>`}${r.gmixed ? ' <span class="chip o" title="The rows of this sitting were marked differently – open Review and save once">mixed</span>' : ''}</td><td><button class="btn primary small" data-review="${i}">Review</button></td><td>${adm ? `<button class="btn danger small" data-del="${i}">Delete</button>` : ''}</td></tr>`; }).join('') : '<tr><td colspan="10" class="empty">No submissions match.</td></tr>';
 }
 ['#f-class', '#f-type', '#f-status'].forEach(s => $(s).addEventListener('change', renderSubs));
 $('#btn-subs-refresh').addEventListener('click', loadSubs);
@@ -2963,8 +3067,8 @@ applySettings();
   showSheet(document.getElementById(start) ? start : 's-practice', !!sh);
   if (el && sh && el !== sh) setTimeout(() => el.scrollIntoView({ block: 'start' }), 60);
 })();
-refreshSettings(); flushQueue(); quietFbCount();
-if (/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(location.host)) window.__su = { machineReview, checkParts, composeText, parseText, boxOf, PROMPTS, STEPS, asgIdsOf, st, get WORK() { return WORK; } };   // test hook on local copies only
+refreshSettings(); flushQueue(); quietFbCount(); refreshAiMine();
+if (/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(location.host)) window.__su = { machineReview, checkParts, composeText, parseText, boxOf, PROMPTS, STEPS, asgIdsOf, st, openTeacher, aiToSt, get WORK() { return WORK; } };   // test hook on local copies only
 if (isStaff() && !$('#s-staff').hidden) renderStaff();
 })();
 
