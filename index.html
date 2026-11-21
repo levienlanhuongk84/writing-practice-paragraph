@@ -703,7 +703,7 @@
 
   /* class assignments editor */
   .as-row { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; background: var(--surface-3); }
-  .as-top { display: grid; grid-template-columns: minmax(160px, 260px) 150px auto; gap: 10px; align-items: end; }
+  .as-top { display: grid; grid-template-columns: minmax(160px, 260px) minmax(190px, 240px) 150px auto; gap: 10px; align-items: end; }
   .as-top .as-del { justify-self: end; }
   @media (max-width: 640px) { .as-top { grid-template-columns: 1fr 1fr; } .as-top .as-del { grid-column: 1 / -1; justify-self: start; } }
   .as-types { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 10px; }
@@ -867,8 +867,9 @@
 .box-h .stg, .base-row .stg { white-space: normal; max-width: 100%; line-height: 1.3; }
 .box-h > *, .base-row > * { min-width: 0; }
 /* the latest assignment row = the only code students can pick */
-#as-rows .as-row:last-of-type { border-color: var(--good, #2E7D4F); box-shadow: inset 0 0 0 1px var(--good, #2E7D4F); }
-#as-rows .as-row:last-of-type::before { content: "✓ Latest — the only code students see"; display: inline-block; margin-bottom: 8px; font: 700 .74em var(--font-cond, inherit); letter-spacing: .06em; text-transform: uppercase; color: #fff; background: var(--good, #2E7D4F); border-radius: 999px; padding: 3px 10px; }
+/* 21/11: every row is a class students can pick (no "latest only"); each row has its own deadline */
+.due-line { display: block; margin-bottom: 6px; padding: 7px 12px; border-radius: 10px; background: var(--orange-soft, #FFF1E6); color: var(--orange-ink, #8A3B00); font-weight: 600; }
+.as-due { width: 100%; min-width: 0; }
 /* one submission with several sets (28/10): set headings in the review text and ladders, set list in the tables */
 .es-set { font: 700 1em var(--font); color: var(--orange-ink); background: var(--orange-soft); border-radius: 10px; padding: 7px 12px; margin: 16px 0 10px; }
 .es-set:first-child { margin-top: 0; }
@@ -1353,7 +1354,7 @@ body.ref-open { overflow: hidden; }
       </div>
       <div class="card" id="admin-assign" style="margin-top:16px">
         <h4 style="font-size:1.15em;color:var(--purple-ink)">Class assignments</h4>
-        <p class="vn" style="margin:6px 0 12px">A student whose <b>Class / ID</b> starts with a class code below (e.g. code CH35 → CH35-07) writes one of the prompts ticked for that class (one ticked = everyone writes it). The 4 steps are timed 5 + 15 + 5 + 30 minutes; the paragraph is submitted automatically at the end of Step 4. With no class listed, every student chooses freely.</p>
+        <p class="vn" style="margin:6px 0 12px">A student whose <b>Class / ID</b> starts with a class code below (e.g. code CH35 → CH35-07) writes one of the prompts ticked for that class (one ticked = everyone writes it). The 4 steps are timed 5 + 15 + 5 + 30 minutes; the paragraph is submitted automatically at the end of Step 4. With no class listed, every student chooses freely.<br>Several classes can practise in the same week: add one row per class, each with its own prompts and <b>deadline</b>. Students see every open code and pick their own; after the deadline the page and the class records accept no more paragraphs for that code. Remove a row to close a class at once.</p>
         <div class="field" style="max-width:460px"><label for="as-others">Students whose Class / ID matches no code</label><select id="as-others"><option value="closed">Blocked — they cannot start</option><option value="full">Full choice — they pick any prompt</option></select></div>
         <div id="as-rows" style="margin-top:12px"></div>
         <div class="row" style="justify-content:space-between;margin-top:12px"><button class="btn ghost" id="as-add">+ Add a class</button><button class="btn primary" id="as-save">Save assignments</button></div>
@@ -1798,7 +1799,7 @@ function localApi(action, p) {       // no class records connected: everything s
 const DEFAULT_SET = { open: true, passMark: CONFIG.PASS_MARK, showRanking: true, message: '' };
 let SET = Object.assign({}, DEFAULT_SET, store.get('settings', {}));
 function applySettings() {
-  if (window.lhAddClasses) { const rows = ((SET || {}).assign || {}).rows || [], last = rows.length ? rows[rows.length - 1].code : ''; window.lhAddClasses(last ? [last] : [], !!last); }   // teacher rule 23/10: students see ONLY the most recently assigned code (the last row; the row the teacher edits moves to the end on save)
+  if (window.lhAddClasses) { const codes = listedCodes(); window.lhAddClasses(codes, !!codes.length); }   // 21/11: every class still open is listed (several classes may practise in the same week); a code whose deadline passed over a day ago drops out
   const msg = ((SET.open ? '' : 'Submissions are closed at the moment. ') + (SET.message || '')).trim();
   const n = $('#closed-note'); n.hidden = !msg; n.className = 'status' + (SET.open ? '' : ' err'); n.lastElementChild.textContent = msg;
   $$('.btn-submit').forEach(b => b.disabled = !SET.open);
@@ -1833,6 +1834,18 @@ function promptStatus(id) {
    Stored as the prompt ids themselves (A1 … F5): the Supabase backend has no part-code limit (the Google Sheet era packed them per type). */
 const asgIdsOf = r => { const L = (r && r.ids) || []; return ORDER.filter(id => L.includes(id)); };
 const normCode = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+/* ---------- per-class deadline (21/11): row.due = ISO time; after it the page and the server close submissions for that code ---------- */
+const DUE_GRACE = 5 * 60000;
+const workRow = () => WORK && WORK.asg ? ((((SET || {}).assign || {}).rows || []).find(r => normCode(r.code) === normCode(WORK.asg.code)) || WORK.asg) : null;   // the teacher may move a deadline after the student started: use the current row          // the server still accepts a paragraph sent up to 5 min after the deadline (slow networks)
+const dueMs = r => { const t = r && r !== 'closed' && r.due ? Date.parse(r.due) : NaN; return isNaN(t) ? null : t; };
+const duePassed = (r, grace) => { const t = dueMs(r); return t !== null && Date.now() > t + (grace ? DUE_GRACE : 0); };
+const fmtDue = t => new Date(t).toLocaleString('en-GB', { timeZone: 'Asia/Ho_Chi_Minh', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).replace(',', '');
+function dueLeft(t) { const m = Math.floor((t - Date.now()) / 60000); if (m < 1) return 'less than 1 min left'; const d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60), mm = m % 60;
+  return (d ? d + (d > 1 ? ' days ' : ' day ') + h + ' h' : h ? h + ' h ' + mm + ' min' : mm + ' min') + ' left'; }
+function listedCodes() {             // the codes in the Class / ID list: every row except those closed for more than a day (all rows when every one is old)
+  const rows = ((SET || {}).assign || {}).rows || [], fresh = rows.filter(r => { const t = dueMs(r); return t === null || Date.now() < t + 86400000; });
+  return (fresh.length ? fresh : rows).map(r => r.code);
+}
 function assignmentFor(sid) {       // same matching as the mock tests: the longest class code the Class / ID starts with ("CH3" never matches "CH35")
   const as = SET.assign || {}, rows = Array.isArray(as.rows) ? as.rows : [], n = normCode(sid); let best = null;
   if (!rows.length) return null;     // no class listed: everyone chooses freely
@@ -1859,6 +1872,11 @@ function renderPicker() {
     $('#type-pick').innerHTML = `<div class="note bad" style="grid-column:1/-1"><span class="tag">Not assigned</span><p>${$('#f-sid').value.trim() ? 'This practice is not assigned to your Class / ID. Check the code with your teacher.' : 'Choose your class to see the prompts assigned to it.'}</p></div>`;
     $('#pick-summary').textContent = ''; $('#btn-start').textContent = 'Start'; $('#btn-start').disabled = true; return;
   }
+  if (asg && duePassed(asg)) {
+    $('#pick-h').textContent = 'Choose a prompt';
+    $('#type-pick').innerHTML = `<div class="note bad" style="grid-column:1/-1"><span class="tag">Deadline passed</span><p>The deadline for class <b>${esc(asg.code)}</b> was <b>${esc(fmtDue(dueMs(asg)))}</b>. Submissions for this class are closed.</p></div>`;
+    $('#pick-summary').textContent = ''; $('#btn-start').textContent = 'Start'; $('#btn-start').disabled = true; return;
+  }
   $('#btn-start').disabled = !SET.open;
   if (SEL && !allow.includes(SEL)) SEL = '';
   if (!SEL && allow.length === 1) SEL = allow[0];
@@ -1869,7 +1887,8 @@ function renderPicker() {
     return `<div class="skill${SEL && PROMPTS[SEL].type === T.id ? ' on' : ''}"><div class="head"><span><b>${T.id} · ${esc(T.short)}</b><small>${sub}/${ids.length} submitted</small></span></div>
       <div class="ptopics">${ids.map(id => { const [st2, c] = promptStatus(id); return `<button type="button" class="ptopic${SEL === id ? ' on' : ''}${c ? ' ' + c : ''}" data-pick="${id}" title="${esc(st2)}" aria-label="${esc(id + ' · ' + PROMPTS[id].topic + ' · ' + st2)}"><b>${id}</b><span>${esc(PROMPTS[id].topic)}</span>${c ? `<i>${c === 'done' ? '✓' : '…'}</i>` : ''}</button>`; }).join('')}</div></div>`; }).join('');
   const p = SEL && PROMPTS[SEL];
-  $('#pick-summary').innerHTML = (asg ? `<b>Class ${esc(asg.code)}</b> · ` : '') + (p ? `<b>${esc(p.id)} · ${esc(TYPE(p.type).short)}</b> — ${esc(p.task)} <span class="muted">(${esc(promptStatus(p.id)[0])})</span>` : 'Choose one prompt.');
+  const dl = asg && dueMs(asg) !== null ? `<span class="due-line">⏰ Deadline for ${esc(asg.code)}: <b>${esc(fmtDue(dueMs(asg)))}</b> <span class="muted">(${esc(dueLeft(dueMs(asg)))})</span></span>` : '';
+  $('#pick-summary').innerHTML = dl + (asg ? `<b>Class ${esc(asg.code)}</b> · ` : '') + (p ? `<b>${esc(p.id)} · ${esc(TYPE(p.type).short)}</b> — ${esc(p.task)} <span class="muted">(${esc(promptStatus(p.id)[0])})</span>` : 'Choose one prompt.');
   $('#btn-start').textContent = p ? (promptStatus(p.id)[1] === 'go' ? 'Continue ' + p.id : promptStatus(p.id)[1] === 'done' ? 'Open ' + p.id : 'Start ' + p.id) : 'Start';
 }
 document.addEventListener('click', e => {
@@ -1880,15 +1899,18 @@ function startErr(msg) { const el = $('#start-err'); el.hidden = !msg; el.lastEl
 let pickDeb = null;
 ['f-name', 'f-sid'].forEach(f => $('#' + f).addEventListener('input', () => { store.set('me', { name: $('#f-name').value.trim().replace(/\s+/g, ' '), sid: normClass($('#f-sid').value) }); startErr(''); if (f === 'f-sid') { clearTimeout(pickDeb); pickDeb = setTimeout(renderPicker, 250); } }));
 $('#f-sid').addEventListener('change', () => { clearTimeout(pickDeb); renderPicker(); });
-$('#btn-start').addEventListener('click', () => {
+$('#btn-start').addEventListener('click', async () => {
   const name = $('#f-name').value.trim().replace(/\s+/g, ' '), sid = normClass($('#f-sid').value);
   if (name.length < 2) { startErr('Type your full name.'); $('#f-name').focus(); return; }
   if (!sid) { startErr('Choose your class.'); $('#f-sid').focus(); return; }
   const asg = assignmentFor(sid);
   if (asg === 'closed') { startErr('This practice is not assigned to your Class / ID.'); return; }
   if (!SEL || !allowedIds(asg).includes(SEL)) { startErr('Choose a prompt.'); return; }
+  if (asg && duePassed(asg)) { startErr(`The deadline for ${asg.code} has passed (${fmtDue(dueMs(asg))}).`); renderPicker(); return; }
+  const s0 = st(SEL), fresh = !started(s0) && !s0.submitted, left = asg && dueMs(asg) !== null ? (dueMs(asg) - Date.now()) / 60000 : Infinity;
+  if (fresh && left < TOTAL_MIN && !(await ask(`Only ${Math.max(1, Math.floor(left))} min are left before the deadline of ${asg.code} (${fmtDue(dueMs(asg))}), and the 4 steps take ${TOTAL_MIN} min. At the deadline the page submits what you have written. Start anyway?`, 'Start anyway'))) return;
   store.set('me', { name, sid }); startErr('');
-  WORK = { ids: [SEL], asg: asg ? { code: asg.code } : null }; saveWork();
+  WORK = { ids: [SEL], asg: asg ? { code: asg.code, due: asg.due || '' } : null }; saveWork();
   openWork();
 });
 function openWork() {
@@ -1994,7 +2016,8 @@ function paintTimer() {
 }
 setInterval(() => { if (!workOpen()) return; const id = workId(), s = st(id);
   if (advanceClock(id)) { renderWs(); const on = $('#pstep-on'); if (on) on.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
-  paintTimer(); if (curStep(s) >= STEPS.length - 1 && stepLeft(s, STEPS.length - 1) <= 0) submitWork(true); }, 1000);
+  paintTimer(); if (curStep(s) >= STEPS.length - 1 && stepLeft(s, STEPS.length - 1) <= 0) submitWork(true);
+  else if (workRow() && duePassed(workRow()) && !duePassed(workRow(), true) && started(s)) submitWork(true, 'due'); }, 1000);   // the class deadline arrives while writing: what is written is submitted
 $('#work').addEventListener('input', e => {
   const ta = e.target.closest('[data-box]'); if (!ta || !workOpen()) return;
   const k = ta.dataset.box, s = st(workId());
@@ -2092,7 +2115,7 @@ function buildEntry(id, auto, name, sid) {
   return entry;
 }
 let autoBusy = false;
-async function submitWork(auto) {
+async function submitWork(auto, why) {
   if (!WORK) return; const id = workId(), s = st(id), stEl = $('#wst');
   if (!PROMPTS[id] || s.submitted || (auto && autoBusy)) return; if (auto) autoBusy = true;
   const say = (msg, kind) => { if (!stEl) return; stEl.hidden = false; stEl.className = 'status' + (kind ? ' ' + kind : ''); stEl.lastElementChild.textContent = msg; };
@@ -2101,6 +2124,7 @@ async function submitWork(auto) {
     if (name.length < 2 || !sid) { say('Enter your full name and class on the start page first.', 'err'); return; }
     if (!wc(s.box.pg)) { say('Write your paragraph first.', 'err'); return; }
     if (!SET.open) { say('Submissions are closed at the moment.', 'err'); return; }
+    if (workRow() && duePassed(workRow(), true)) { say(`The deadline for ${WORK.asg.code} has passed (${fmtDue(dueMs(workRow()))}). Submissions for this class are closed.`, 'err'); return; }
     const miss = checkParts(PROMPTS[id], s.box).pg.items.filter(x => !x.ok && !x.minor);
     if (!(await ask((miss.length ? `Not met yet:\n• ${miss.map(x => x.t).join('\n• ')}\n\n` : '') + `Submit ${id} as ${name} (${sid})? You cannot edit it after this.`, miss.length ? 'Submit anyway' : 'Submit'))) return;
     if (st(id).submitted) return;
@@ -2111,7 +2135,7 @@ async function submitWork(auto) {
   renderPicker(); renderWs();
   autoBusy = false;
   if (auto && !$('#rv-modal').hidden) closeReview();
-  openMachine(entry); if (auto) $('#rv-sub').textContent = 'Time is up – your work was submitted automatically. ' + $('#rv-sub').textContent;
+  openMachine(entry); if (auto) $('#rv-sub').textContent = (why === 'due' ? 'The class deadline has arrived – your work was submitted automatically. ' : 'Time is up – your work was submitted automatically. ') + $('#rv-sub').textContent;
   setSendNote(entry.clientId, null);
   if (auto) scheduleFlush(Math.random() * 25000); else flushQueue();   // time-up bursts: spread the sends over 25 s
 }
@@ -2161,7 +2185,8 @@ async function flushQueue() {
   try {
     for (const m of mineList().filter(x => x.pending)) {
       setSendNote(m.clientId, null);
-      let ok = false; try { const j = await api('submit', m.pending); ok = !!(j && j.ok); } catch (e) {}   // under load Google may lose the reply after the row is written: the resend is then answered "duplicate" = ok
+      let ok = false, late = false; try { const j = await api('submit', m.pending); ok = !!(j && j.ok); late = !!(j && j.error === 'deadline passed'); } catch (e) {}
+      if (late) { const L = mineList(); const x = L.find(y => y.clientId === m.clientId); if (x) { delete x.pending; x.late = true; store.set('mine', L); } setSendNote(m.clientId, 'late'); continue; }   // under load Google may lose the reply after the row is written: the resend is then answered "duplicate" = ok
       if (ok) { const L = mineList(); const x = L.find(y => y.clientId === m.clientId); if (x) { delete x.pending; store.set('mine', L); } pollAi(m.clientId); } else left++;
       setSendNote(m.clientId, ok);
     }
@@ -2170,9 +2195,9 @@ async function flushQueue() {
   else flushRound = 0;
 }
 function setSendNote(clientId, ok, quiet) {
-  const msg = ok === null ? 'Saving to the class records… you can keep working; please do not clear this browser.' : ok ? (CONFIG.API_URL ? 'Saved to the class records. Your teacher will review it.' : 'Saved on this device (the class records is not connected in this copy).') : 'The class records is busy – your work is safe on this device and is being sent again automatically. You can close the page; it is also resent the next time you open it.';
-  const el = $('#rv-send'); if (el && el.dataset.cid === clientId && !quiet) { el.className = 'status ' + (ok ? 'ok' : ok === null ? '' : 'err'); el.hidden = false; el.lastElementChild.textContent = msg; }
-  const e2 = $(`[data-sendst="${clientId}"]`); if (e2) e2.textContent = ok ? (quiet ? '' : 'Saved to the class records.') : ok === null ? 'Saving to the class records…' : 'Not yet in the class records – it is being resent automatically.';
+  const msg = ok === 'late' ? 'Not accepted: it reached the class records after the class deadline. Show this page to your teacher.' : ok === null ? 'Saving to the class records… you can keep working; please do not clear this browser.' : ok ? (CONFIG.API_URL ? 'Saved to the class records. Your teacher will review it.' : 'Saved on this device (the class records is not connected in this copy).') : 'The class records is busy – your work is safe on this device and is being sent again automatically. You can close the page; it is also resent the next time you open it.';
+  const el = $('#rv-send'); if (el && el.dataset.cid === clientId && !quiet) { el.className = 'status ' + (ok === true ? 'ok' : ok === null ? '' : 'err'); el.hidden = false; el.lastElementChild.textContent = msg; }
+  const e2 = $(`[data-sendst="${clientId}"]`); if (e2) e2.textContent = ok === 'late' ? 'Not accepted – after the class deadline.' : ok ? (quiet ? '' : 'Saved to the class records.') : ok === null ? 'Saving to the class records…' : 'Not yet in the class records – it is being resent automatically.';
 }
 window.addEventListener('online', flushQueue);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') flushQueue(); });
@@ -2935,9 +2960,11 @@ $('#btn-save-settings').addEventListener('click', async () => {
 });
 /* ---------- class assignments editor (admin) ---------- */
 let ASG_DIRTY = false;
+function dueLocal(iso) { const t = iso ? Date.parse(iso) : NaN; if (isNaN(t)) return ''; return new Date(t + 7 * 3600000).toISOString().slice(0, 16); }   // ISO → the datetime-local value in Vietnam time
+function dueIso(v) { if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(v || '')) return ''; return new Date(Date.parse(v + ':00Z') - 7 * 3600000).toISOString().replace(/\.\d+Z$/, 'Z'); }   // the datetime-local value (Vietnam time) → ISO
 function asgRow(r) {
   r = r || { code: '', ids: [] }; const ids = asgIdsOf(r);
-  return `<div class="as-row"><div class="as-top"><div class="field"><label>Class code</label><input class="as-code" maxlength="30" placeholder="e.g. CH35" value="${esc(r.code)}"></div><div class="field"><label>Time</label><p class="as-time">${STEPS.map(S => S.min).join(' + ')} = ${TOTAL_MIN} min</p></div><button class="btn danger small as-del" type="button">Remove</button></div>
+  return `<div class="as-row"><div class="as-top"><div class="field"><label>Class code</label><input class="as-code" maxlength="30" placeholder="e.g. CH35" value="${esc(r.code)}"></div><div class="field"><label>Deadline (Vietnam time)</label><input class="as-due" type="datetime-local" value="${esc(dueLocal(r.due))}"></div><div class="field"><label>Time</label><p class="as-time">${STEPS.map(S => S.min).join(' + ')} = ${TOTAL_MIN} min</p></div><button class="btn danger small as-del" type="button">Remove</button></div>
     <div class="as-types">${TYPES.map(T => `<div class="as-type"><button type="button" class="as-all" data-type="${T.id}">${T.id} · ${esc(T.short)}</button>${DATA.filter(p => p.type === T.id).map(p => `<button type="button" class="as-p${ids.includes(p.id) ? ' on' : ''}" data-id="${p.id}" title="${esc(p.topic)}">${p.id}</button>`).join('')}</div>`).join('')}</div></div>`;
 }
 function fillAssign() {
@@ -2951,10 +2978,10 @@ function collectAssign() {
   const rows = []; let err = '';
   const els = $$('#as-rows .as-row'); if (asgTouched && els.includes(asgTouched)) { els.splice(els.indexOf(asgTouched), 1); els.push(asgTouched); }
   els.forEach(row => {
-    const code = $('.as-code', row).value.trim(), ids = $$('.as-p.on', row).map(b => b.dataset.id);
+    const code = $('.as-code', row).value.trim(), ids = $$('.as-p.on', row).map(b => b.dataset.id), dv = $('.as-due', row).value, due = dueIso(dv);
     if (!code && !ids.length) return;
-    if (!code) err = 'Every class needs a code.'; else if (!ids.length) err = `Tick at least one prompt for ${code}.`;
-    rows.push({ code, ids });
+    if (!code) err = 'Every class needs a code.'; else if (!ids.length) err = `Tick at least one prompt for ${code}.`; else if (dv && !due) err = `Check the deadline of ${code}.`;
+    rows.push(due ? { code, ids, due } : { code, ids });
   });
   const codes = rows.map(r => normCode(r.code)); if (new Set(codes).size !== codes.length) err = 'Two rows have the same class code.';
   return { err, assign: { rows, others: $('#as-others').value } };
@@ -2974,7 +3001,7 @@ function asgSay(m, k) { const st2 = $('#as-status'); st2.hidden = false; st2.cla
 function asgChanged() { ASG_DIRTY = true; clearTimeout(asgTimer); asgTimer = setTimeout(() => saveAssign(true), 1500); }
 function asgSummary(rows) {
   if (!rows.length) return 'No class listed — every student chooses freely.';
-  return rows.map(r => { const ids = asgIdsOf(r); return `${r.code} → ${ids.join(', ')}${ids.length > 1 ? ' (each student chooses one)' : ''}`; }).join('  |  ');
+  return rows.map(r => { const ids = asgIdsOf(r), t = dueMs(r); return `${r.code} → ${ids.join(', ')}${ids.length > 1 ? ' (each student chooses one)' : ''}${t !== null ? ' · deadline ' + fmtDue(t) + (Date.now() > t ? ' (closed)' : '') : ' · no deadline'}`; }).join('  |  ');
 }
 async function saveAssign(auto) {
   if (!isAdmin()) return;
@@ -2988,7 +3015,8 @@ async function saveAssign(auto) {
     const typing = auto && $('#admin-assign').contains(document.activeElement);
     if (typing) applySettings(); else { ASG_DIRTY = false; applySettings(); fillAssign(); }   // never redraw the rows under the teacher's cursor
     const rows = (SET.assign && SET.assign.rows) || [];
-    asgSay(`✓ Saved ${hhmm(new Date())} — ${asgSummary(rows)}.${rows.length ? ' Students now see only ' + rows[rows.length - 1].code + ' (the latest) in the Class / ID list.' : ''}`, 'ok'); }
+    const shown = listedCodes();
+    asgSay(`✓ Saved ${hhmm(new Date())} — ${asgSummary(rows)}.${shown.length ? ' Students now see ' + shown.join(', ') + ' in the Class / ID list; each class sees only its own prompts and deadline.' : ''}`, 'ok'); }
   catch (e) { asgSay('Could not save: ' + (e.message || 'error') + ' – it will try again on your next change, or press Save assignments.', 'err'); }
   finally { asgBusy = false; if (asgAgain) { asgAgain = false; saveAssign(true); } }
 }
@@ -3068,7 +3096,7 @@ applySettings();
   if (el && sh && el !== sh) setTimeout(() => el.scrollIntoView({ block: 'start' }), 60);
 })();
 refreshSettings(); flushQueue(); quietFbCount(); refreshAiMine();
-if (/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(location.host)) window.__su = { machineReview, checkParts, composeText, parseText, boxOf, PROMPTS, STEPS, asgIdsOf, st, openTeacher, aiToSt, get WORK() { return WORK; } };   // test hook on local copies only
+if (/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(location.host)) window.__su = { machineReview, checkParts, composeText, parseText, boxOf, PROMPTS, STEPS, asgIdsOf, st, openTeacher, aiToSt, asgRow, collectAssign, asgSummary, get WORK() { return WORK; } };   // test hook on local copies only
 if (isStaff() && !$('#s-staff').hidden) renderStaff();
 })();
 
